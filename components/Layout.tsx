@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Sun, Moon } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
-interface LayoutProps {
-  userEmail?: string | null;
-  onLogout: () => void;
-}
-
-export const Layout: React.FC<LayoutProps> = ({ userEmail, onLogout }) => {
+export const Layout: React.FC = () => {
+  const { currentUser, logout } = useAuth();
+  
   const [isDark, setIsDark] = useState<boolean>(() => {
     // Check local storage or system preference
     if (localStorage.getItem('theme') === 'dark') return true;
@@ -31,6 +29,14 @@ export const Layout: React.FC<LayoutProps> = ({ userEmail, onLogout }) => {
 
   const toggleTheme = () => setIsDark(!isDark);
 
+  const handleLogout = async () => {
+      try {
+          await logout();
+      } catch (error) {
+          console.error("Logout failed", error);
+      }
+  };
+
   // Dynamic Title based on Route
   const getPageTitle = () => {
     switch (location.pathname) {
@@ -45,7 +51,7 @@ export const Layout: React.FC<LayoutProps> = ({ userEmail, onLogout }) => {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      <Sidebar onLogout={onLogout} />
+      <Sidebar onLogout={handleLogout} />
 
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Sticky Header */}
@@ -57,7 +63,7 @@ export const Layout: React.FC<LayoutProps> = ({ userEmail, onLogout }) => {
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-slate-400">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-              <span>{userEmail || 'Connecté'}</span>
+              <span>{currentUser?.email || 'Connecté'}</span>
             </div>
 
             {/* Custom Toggle Switch for Theme */}

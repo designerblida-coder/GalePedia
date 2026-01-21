@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlanning } from '../contexts/PlanningContext';
+import { useData } from '../contexts/DataContext';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, User, Pill, Trash2, CheckCircle2, Plus, X, Lock, Phone, Search, ChevronRight as ArrowRight, Sparkles, Activity } from 'lucide-react';
-import { ALGERIA_HOLIDAYS, MOCK_PATIENTS, Patient } from '../types';
+import { ALGERIA_HOLIDAYS, Patient } from '../types';
 
 export const Planning: React.FC = () => {
   const navigate = useNavigate();
   const { appointments, getDailyCount, addAppointment, deleteAppointment, MAX_CAPACITY } = usePlanning();
+  const { patients } = useData(); // Real Data
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Modal States
@@ -80,7 +82,7 @@ export const Planning: React.FC = () => {
   const handlePatientNameChange = (val: string) => {
     setNewPatientName(val);
     if (val.trim().length > 1) {
-       const filtered = MOCK_PATIENTS.filter(p => p.name.includes(val.toUpperCase()));
+       const filtered = patients.filter(p => p.name.includes(val.toUpperCase()));
        setSuggestions(filtered);
        setShowSuggestions(true);
     } else {

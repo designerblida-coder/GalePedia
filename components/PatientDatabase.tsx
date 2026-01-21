@@ -5,18 +5,16 @@ import {
   ChevronRight, 
   X, 
   Plus, 
-  Calendar, 
   Activity, 
   AlertTriangle, 
-  Filter, 
   ArrowUpDown,
   History,
   Clock,
-  CheckCircle,
-  AlertCircle
+  Loader2
 } from 'lucide-react';
-import { Patient, MOCK_PATIENTS, DRUG_MASTER } from '../types';
+import { Patient } from '../types';
 import { PatientHistory } from './PatientHistory';
+import { useData } from '../contexts/DataContext';
 
 // --- HELPERS ---
 
@@ -117,6 +115,7 @@ const getRecentMeds = (patient: Patient) => {
 export const PatientDatabase: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { patients, loading } = useData();
   
   // State
   const [searchTerm, setSearchTerm] = useState('');
@@ -127,20 +126,20 @@ export const PatientDatabase: React.FC = () => {
 
   // Handle auto-open from navigation state
   useEffect(() => {
-    if (location.state && (location.state as any).openPatient) {
+    if (location.state && (location.state as any).openPatient && patients.length > 0) {
         const targetName = (location.state as any).openPatient;
-        const target = MOCK_PATIENTS.find(p => p.name === targetName);
+        const target = patients.find(p => p.name === targetName);
         if (target) {
             setSelectedPatient(target);
             // Clear state so it doesn't reopen on refresh/back (optional but good UX)
             window.history.replaceState({}, document.title);
         }
     }
-  }, [location.state]);
+  }, [location.state, patients]);
 
   // Filtering Logic
   const filteredPatients = useMemo(() => {
-    let result = MOCK_PATIENTS.filter(p => 
+    let result = patients.filter(p => 
       p.name.includes(searchTerm.toUpperCase()) || 
       (p.phone && p.phone.includes(searchTerm))
     );
@@ -178,7 +177,6 @@ export const PatientDatabase: React.FC = () => {
              const statA = getTreatmentStatus(a);
              const statB = getTreatmentStatus(b);
              // Sort by daysLeft (ascending = most urgent/expired first)
-             // We put Unknowns at the bottom usually, or top? Let's put them bottom.
              const daysA = statA.status === 'unknown' ? 9999 : statA.daysLeft;
              const daysB = statB.status === 'unknown' ? 9999 : statB.daysLeft;
              
@@ -188,7 +186,7 @@ export const PatientDatabase: React.FC = () => {
     });
 
     return result;
-  }, [searchTerm, activeFilter, sortConfig]);
+  }, [searchTerm, activeFilter, sortConfig, patients]);
 
   // Handlers
   const handleSort = (key: 'name' | 'lastUpdate' | 'urgency') => {
@@ -216,6 +214,8 @@ export const PatientDatabase: React.FC = () => {
           {label}
       </button>
   );
+
+  if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>;
 
   return (
     <div className="space-y-8 animate-[fadeIn_0.4s_ease-out]">

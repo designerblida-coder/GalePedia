@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { MOCK_PATIENTS, CAPSULE_TYPES } from '../types';
+import { CAPSULE_TYPES } from '../types';
+import { useData } from '../contexts/DataContext';
 import { 
   Scale, 
   Zap, 
@@ -12,6 +13,8 @@ import {
 } from 'lucide-react';
 
 export const ProductionStats: React.FC = () => {
+  const { patients } = useData(); // Real Data
+  
   // --- CONSTANTS ---
   const EXCIPIENT_DENSITY = 0.65; // g/ml (Average density for lactose/starch mix)
 
@@ -28,7 +31,7 @@ export const ProductionStats: React.FC = () => {
     const activeDays = new Set<string>(); // "YYYY-MM-DD"
     const moleculeDistribution = new Map<string, number>();
 
-    MOCK_PATIENTS.forEach(p => {
+    patients.forEach(p => {
         if (p.history) {
             p.history.forEach(h => {
                 const hDate = new Date(h.timestamp);
@@ -100,7 +103,7 @@ export const ProductionStats: React.FC = () => {
             .sort((a, b) => b[1] - a[1])
             .slice(0, 5)
     };
-  }, []);
+  }, [patients]);
 
   // --- UI COMPONENTS ---
 

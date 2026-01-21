@@ -3,31 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
   FlaskConical, 
-  Calendar, 
   PlusCircle, 
-  BarChart3,
   Trophy, 
   Clock, 
   Pill,
   Loader2,
-  TrendingUp,
-  X,
   ChevronRight, 
-  AlertCircle,
-  CheckCircle2,
-  Filter,
-  Phone,
-  AlertTriangle,
   Siren,
   CalendarDays,
-  ArrowRight,
+  Phone,
+  Calendar,
   Check,
   CalendarClock,
-  Box // Added Box icon
+  Box,
+  X
 } from 'lucide-react';
-import { MOCK_PATIENTS, Patient } from '../types';
+import { Patient } from '../types';
 import { PatientHistory } from './PatientHistory';
 import { usePlanning, SuggestionResult } from '../contexts/PlanningContext';
+import { useData } from '../contexts/DataContext';
 
 // --- TYPES ---
 
@@ -56,18 +50,6 @@ interface RenewalAlert {
   duration: number;
 }
 
-interface DashboardStats {
-  totalPatients: number;
-  monthPreps: number; // Changed from totalPreps to monthPreps
-  monthCapsules: number; // Changed to specific monthly count
-  todayPreps: number;
-  dailyStats: DailyStat[];
-  maxDailyCount: number;
-  topPreparators: [string, number][];
-  recentActivity: ActivityItem[];
-  renewalAlerts: RenewalAlert[];
-}
-
 // --- HELPER ---
 
 const formatRelativeTime = (timestamp: number): string => {
@@ -91,7 +73,6 @@ const formatRelativeTime = (timestamp: number): string => {
 };
 
 const formatDateFR = (isoStr: string) => {
-    // If isoStr is already YYYY-MM-DD
     if (isoStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const [y, m, d] = isoStr.split('-').map(Number);
         const date = new Date(y, m - 1, d);
@@ -133,12 +114,9 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, colorClass, bgC
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { patients, loading } = useData(); // Use Real Data Context
   const { findBestSlot, addAppointment, appointments, formatDate } = usePlanning();
 
-  // State
-  const [data, setData] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  
   // Filtering & UI State
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   
@@ -147,78 +125,56 @@ export const Dashboard: React.FC = () => {
   const [suggestion, setSuggestion] = useState<SuggestionResult | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
+  // Calculate Stats based on Real Data
+  const stats = useMemo(() => {
+    if (loading) return null;
 
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        // Simulate network latency
-        await new Promise(resolve => setTimeout(resolve, 600));
+    let monthPreps = 0;
+    let todayPreps = 0;
+    let monthCapsules = 0;
+    let activityLog: ActivityItem[] = [];
+    let preparatorCounts: Record<string, number> = {};
+    let alerts: RenewalAlert[] = [];
+    
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const todayStr = now.toLocaleDateString('fr-FR');
+    
+    // Iterate over Real Patients
+    patients.forEach(p => {
+        if (p.history && p.history.length > 0) {
+            // 1. Renewal Alerts
+            const latest = [...p.history].sort((a,b) => b.timestamp - a.timestamp)[0];
+            const maxDuration = Math.max(...latest.preps.map(pr => pr.duration || 0));
+            
+            if (maxDuration > 0) {
+                const elapsedMs = now.getTime() - latest.timestamp;
+                const durationMs = maxDuration * 24 * 60 * 60 * 1000;
+                const remainingMs = durationMs - elapsedMs;
+                const daysLeft = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+                
+                if (daysLeft <= 7) {
+                    const molecule = latest.preps[0].molecule; 
+                    alerts.push({
+                        patient: p,
+                        molecule,
+                        daysLeft,
+                        severity: daysLeft <= 0 ? 'red' : (daysLeft <= 3 ? 'orange' : 'yellow'),
+                        label: daysLeft <= 0 ? `Terminé (${Math.abs(daysLeft)}j)` : `Reste ${daysLeft}j`,
+                        lastPrepTimestamp: latest.timestamp,
+                        duration: maxDuration
+                    });
+                }
+            }
 
-        if (!isMounted) return;
-
-        let monthPreps = 0;
-        let todayPreps = 0;
-        let monthCapsules = 0;
-        let activityLog: ActivityItem[] = [];
-        let preparatorCounts: Record<string, number> = {};
-        let alerts: RenewalAlert[] = [];
-        
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const todayStr = now.toLocaleDateString('fr-FR');
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(now.getDate() - 6);
-
-        // Daily Stats Map
-        const dailyCounts = new Map<string, number>();
-        for (let i = 0; i < 7; i++) {
-           const d = new Date(sevenDaysAgo);
-           d.setDate(d.getDate() + i);
-           const dateKey = d.toLocaleDateString('fr-FR');
-           dailyCounts.set(dateKey, 0);
-        }
-
-        MOCK_PATIENTS.forEach(p => {
-          if (p.history) {
-             // 1. Calculate Renewal Alerts
-             if (p.history.length > 0) {
-                 const latest = [...p.history].sort((a,b) => b.timestamp - a.timestamp)[0];
-                 const maxDuration = Math.max(...latest.preps.map(pr => pr.duration || 0));
-                 
-                 if (maxDuration > 0) {
-                     const elapsedMs = now.getTime() - latest.timestamp;
-                     const durationMs = maxDuration * 24 * 60 * 60 * 1000;
-                     const remainingMs = durationMs - elapsedMs;
-                     const daysLeft = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
-                     
-                     if (daysLeft <= 7) {
-                         const molecule = latest.preps[0].molecule; // Primary molecule
-                         alerts.push({
-                             patient: p,
-                             molecule,
-                             daysLeft,
-                             severity: daysLeft <= 0 ? 'red' : (daysLeft <= 3 ? 'orange' : 'yellow'),
-                             label: daysLeft <= 0 ? `Terminé (${Math.abs(daysLeft)}j)` : `Reste ${daysLeft}j`,
-                             lastPrepTimestamp: latest.timestamp,
-                             duration: maxDuration
-                         });
-                     }
-                 }
-             }
-
-             // 2. Aggregate Stats
-             p.history.forEach(h => {
+            // 2. Stats & Activity
+            p.history.forEach(h => {
                 const hDate = new Date(h.timestamp);
-                const isToday = h.date.startsWith(todayStr); // Approx check for french date format
                 const isCurrentMonth = hDate.getMonth() === currentMonth && hDate.getFullYear() === currentYear;
-                const prepsCount = h.preps.length;
-
+                
                 if (isCurrentMonth) {
-                    monthPreps += prepsCount;
-                     // Capsules count (Monthly)
+                    monthPreps += h.preps.length;
                     h.preps.forEach(pr => {
                         if (pr.status === 'ok' && pr.gels) {
                             monthCapsules += parseInt(pr.gels.toString());
@@ -226,9 +182,11 @@ export const Dashboard: React.FC = () => {
                     });
                 }
                 
-                if (isToday) todayPreps += prepsCount;
+                if (h.date === todayStr) { // Check Date String matching
+                    todayPreps += h.preps.length;
+                }
                 
-                // Top Preparators (All time or monthly? Let's keep all time for better sample data)
+                // Preparators
                 h.preparators?.forEach(prep => {
                     preparatorCounts[prep] = (preparatorCounts[prep] || 0) + 1;
                 });
@@ -242,87 +200,49 @@ export const Dashboard: React.FC = () => {
                    molecules: h.preps.map(pr => ({ name: pr.molecule, status: pr.status, type: pr.type, totalMass: pr.totalMass })),
                    fullPatient: p
                 });
+            });
+        }
+    });
 
-                // Daily Stats
-                if (h.timestamp >= sevenDaysAgo.getTime()) {
-                    const d = new Date(h.timestamp);
-                    const dateKey = d.toLocaleDateString('fr-FR');
-                    if (dailyCounts.has(dateKey)) {
-                        dailyCounts.set(dateKey, dailyCounts.get(dateKey)! + prepsCount);
-                    }
-                }
-             });
-          }
-        });
+    const sortedPreparators = Object.entries(preparatorCounts)
+        .sort((a,b) => b[1] - a[1])
+        .slice(0, 3);
 
-        // 3. Format Data
-        const dailyStats = Array.from(dailyCounts.entries()).map(([date, count]) => {
-             const [day, month] = date.split('/');
-             const dObj = new Date();
-             dObj.setDate(parseInt(day));
-             dObj.setMonth(parseInt(month) - 1);
-             return {
-                 date,
-                 shortDay: dObj.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', ''),
-                 count
-             };
-        });
-
-        const sortedPreparators = Object.entries(preparatorCounts)
-           .sort((a,b) => b[1] - a[1])
-           .slice(0, 3);
-
-        const recentActivity = activityLog.sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
-        
-        alerts.sort((a,b) => a.daysLeft - b.daysLeft); // Most urgent first
-
-        setData({
-          totalPatients: MOCK_PATIENTS.length,
-          monthPreps,
-          todayPreps,
-          monthCapsules,
-          dailyStats,
-          maxDailyCount: Math.max(...dailyStats.map(d => d.count), 5), // Min scale 5
-          topPreparators: sortedPreparators,
-          recentActivity,
-          renewalAlerts: alerts
-        });
-
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    fetchDashboardData();
-
-    return () => { isMounted = false; };
-  }, []);
-
-  // Compute Active Alerts (Exclude patients who already have an appointment)
-  const activeAlerts = useMemo(() => {
-    if (!data?.renewalAlerts) return [];
+    const recentActivity = activityLog.sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
     
-    // Get list of patient names who have pending/confirmed appointments
+    alerts.sort((a,b) => a.daysLeft - b.daysLeft);
+
+    return {
+        totalPatients: patients.length,
+        monthPreps,
+        todayPreps,
+        monthCapsules,
+        topPreparators: sortedPreparators,
+        recentActivity,
+        renewalAlerts: alerts
+    };
+  }, [patients, loading]);
+
+  // Compute Active Alerts
+  const activeAlerts = useMemo(() => {
+    if (!stats?.renewalAlerts) return [];
+    
     const patientsWithAppointments = new Set(
         appointments.map(a => a.patientName.toUpperCase())
     );
 
-    return data.renewalAlerts.filter(alert => 
+    return stats.renewalAlerts.filter(alert => 
         !patientsWithAppointments.has(alert.patient.name.toUpperCase())
     );
-  }, [data?.renewalAlerts, appointments]);
+  }, [stats?.renewalAlerts, appointments]);
 
-  // Compute Upcoming Appointments (Sorted)
+  // Compute Upcoming Appointments
   const upcomingAppointments = useMemo(() => {
-      // Use shared formatDate to ensure todayStr exactly matches keys used in PlanningContext
       const todayStr = formatDate(new Date());
-
       return [...appointments]
         .filter(a => a.date >= todayStr)
         .sort((a, b) => a.date.localeCompare(b.date))
-        .slice(0, 5); // Show top 5
+        .slice(0, 5);
   }, [appointments, formatDate]);
 
   const handleOpenScheduleModal = (alert: RenewalAlert) => {
@@ -363,7 +283,7 @@ export const Dashboard: React.FC = () => {
         <div className="flex h-[50vh] items-center justify-center">
             <div className="flex flex-col items-center gap-4">
                 <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
-                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Chargement des données...</p>
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Synchronisation Firebase...</p>
             </div>
         </div>
      );
@@ -375,34 +295,30 @@ export const Dashboard: React.FC = () => {
       {/* 1. KEY METRICS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
          
-         {/* Carte 1: Gélules du Mois */}
          <StatCard 
             title="Gélules du Mois" 
-            value={data?.monthCapsules.toLocaleString() || 0} 
+            value={stats?.monthCapsules.toLocaleString() || 0} 
             icon={<Box className="w-5 h-5" />}
             colorClass="text-rose-500"
             bgClass="bg-rose-50 dark:bg-rose-900/30"
          />
 
-         {/* Carte 2: Total Patients */}
          <StatCard 
             title="Total Patients" 
-            value={data?.totalPatients || 0} 
+            value={stats?.totalPatients || 0} 
             icon={<Users className="w-5 h-5" />}
             colorClass="text-indigo-500"
             bgClass="bg-indigo-50 dark:bg-indigo-900/30"
          />
 
-         {/* Carte 3: Préparations du Mois */}
          <StatCard 
             title="Préparations du Mois" 
-            value={data?.monthPreps || 0} 
+            value={stats?.monthPreps || 0} 
             icon={<FlaskConical className="w-5 h-5" />}
             colorClass="text-amber-500"
             bgClass="bg-amber-50 dark:bg-amber-900/30"
          />
 
-         {/* Carte 4: Nouvelle Prep (Action) */}
          <StatCard 
             title="Nouvelle Prep" 
             value="Créer" 
@@ -455,16 +371,15 @@ export const Dashboard: React.FC = () => {
               <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                   <div className="flex justify-between items-center mb-6">
                       <h3 className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-widest flex items-center gap-2">
-                         <Clock className="w-4 h-4 text-slate-400" /> Activité Récente
+                         <Clock className="w-4 h-4 text-slate-400" /> Activité Récente (Live)
                       </h3>
-                      <button className="text-sky-500 text-xs font-bold hover:underline">Voir tout</button>
                   </div>
 
                   <div className="space-y-0">
-                      {data?.recentActivity.length === 0 ? (
+                      {stats?.recentActivity.length === 0 ? (
                           <div className="text-center text-slate-400 py-8 italic">Aucune activité enregistrée</div>
                       ) : (
-                          data?.recentActivity.map((act, idx) => (
+                          stats?.recentActivity.map((act) => (
                               <div 
                                 key={act.id} 
                                 className="group flex gap-4 py-4 border-b border-slate-50 dark:border-slate-700/50 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors px-2 -mx-2 rounded-xl cursor-pointer"
@@ -525,9 +440,7 @@ export const Dashboard: React.FC = () => {
                   ) : (
                       <div className="space-y-3">
                           {upcomingAppointments.map((appt) => {
-                              // Manually parse YYYY-MM-DD to avoid timezone issues
                               const [y, m, d] = appt.date.split('-').map(Number);
-                              // Create local date for display formatting
                               const localDate = new Date(y, m - 1, d);
                               const shortMonth = localDate.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
                               const dayNum = localDate.getDate();
@@ -540,12 +453,10 @@ export const Dashboard: React.FC = () => {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-xs font-bold text-slate-800 dark:text-white truncate">{appt.patientName}</div>
-                                        {/* NEW: Explicit Date Text */}
                                         <div className="flex items-center gap-1 text-[10px] text-sky-600 dark:text-sky-400 font-bold mt-0.5">
                                              <Calendar className="w-3 h-3" />
                                              <span>{formatDateFR(appt.date)}</span>
                                         </div>
-                                        {/* Phone if available */}
                                         {appt.molecule && (
                                           <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
                                               <Phone className="w-3 h-3" />
@@ -572,10 +483,10 @@ export const Dashboard: React.FC = () => {
                       <Trophy className="w-4 h-4 text-yellow-500" /> Stars du Mois
                   </h3>
                   <div className="space-y-4">
-                      {data?.topPreparators.length === 0 ? (
+                      {stats?.topPreparators.length === 0 ? (
                           <div className="text-center text-slate-400 text-xs italic">Pas de données</div>
                       ) : (
-                          data?.topPreparators.map(([name, count], index) => (
+                          stats?.topPreparators.map(([name, count], index) => (
                               <div key={name} className="flex items-center gap-3">
                                   <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs shadow-sm ${
                                       index === 0 ? 'bg-yellow-400' : (index === 1 ? 'bg-slate-300' : 'bg-orange-300')
@@ -597,7 +508,7 @@ export const Dashboard: React.FC = () => {
                   <div className="flex items-start justify-between mb-4">
                       <div>
                           <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Total Gélules Produites</p>
-                          <p className="text-3xl font-black mt-1">{data?.monthCapsules.toLocaleString()}</p>
+                          <p className="text-3xl font-black mt-1">{stats?.monthCapsules.toLocaleString()}</p>
                       </div>
                       <Pill className="w-8 h-8 opacity-20" />
                   </div>

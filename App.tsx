@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Preparation } from './components/Preparation';
@@ -6,59 +6,57 @@ import { PatientDatabase } from './components/PatientDatabase';
 import { Dashboard } from './components/Dashboard';
 import { Protocols } from './components/Protocols';
 import { Planning } from './components/Planning';
-import { ProductionStats } from './components/ProductionStats'; // Import Stats
+import { ProductionStats } from './components/ProductionStats';
+import { Login } from './components/Login';
 import { PlanningProvider } from './contexts/PlanningContext';
+import { DataProvider } from './contexts/DataContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-const Login = ({ onLogin }: { onLogin: () => void }) => (
-  <div className="flex items-center justify-center h-screen bg-slate-900 p-4">
-    <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md text-center">
-        <div className="w-16 h-16 bg-sky-600 rounded-2xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg">
-             <span className="font-bold text-2xl">GP</span>
-        </div>
-        <h2 className="text-2xl font-extrabold text-slate-900 mb-6">GalePedia <span className="text-sky-600">Pro</span></h2>
-        <button 
-            onClick={onLogin}
-            className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg"
-        >
-            Simulate Login
-        </button>
-    </div>
-  </div>
-);
+// Protected Route Wrapper
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { currentUser } = useAuth();
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
+
+// Public Route Wrapper (redirects to dashboard if already logged in)
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const { currentUser } = useAuth();
+  if (currentUser) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+};
 
 function App() {
-  const [user, setUser] = useState<{ email: string } | null>(null);
-
-  const handleLogin = () => {
-    setUser({ email: 'demo@galepedia.com' });
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-  };
-
   return (
-    <PlanningProvider>
-      <HashRouter>
-        <Routes>
-          <Route path="/login" element={!user ? <Login onLogin={handleLogin} /> : <Navigate to="/" />} />
-          
-          {/* Protected Routes */}
-          {user ? (
-            <Route element={<Layout userEmail={user.email} onLogout={handleLogout} />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/stats" element={<ProductionStats />} />
-              <Route path="/planning" element={<Planning />} />
-              <Route path="/prepare" element={<Preparation />} />
-              <Route path="/patients" element={<PatientDatabase />} />
-              <Route path="/protocols" element={<Protocols />} />
-            </Route>
-          ) : (
-            <Route path="*" element={<Navigate to="/login" />} />
-          )}
-        </Routes>
-      </HashRouter>
-    </PlanningProvider>
+    <AuthProvider>
+      <DataProvider>
+        <PlanningProvider>
+          <HashRouter>
+            <Routes>
+              {/* Login Route (Public but redirects if logged in) */}
+              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+              
+              {/* Protected Routes */}
+              <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/stats" element={<ProductionStats />} />
+                <Route path="/planning" element={<Planning />} />
+                <Route path="/prepare" element={<Preparation />} />
+                <Route path="/patients" element={<PatientDatabase />} />
+                <Route path="/protocols" element={<Protocols />} />
+              </Route>
+              
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </HashRouter>
+        </PlanningProvider>
+      </DataProvider>
+    </AuthProvider>
   );
 }
 

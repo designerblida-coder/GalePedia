@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Plus, CheckCheck, User, Phone, Weight, Stethoscope, Search, Check } from 'lucide-react';
-import { PREPARATORS_LIST, MOCK_PATIENTS, Patient } from '../types';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Plus, CheckCheck, User, Phone, Weight, Stethoscope, Search, Check, Loader2 } from 'lucide-react';
+import { PREPARATORS_LIST, Patient } from '../types';
 import { PreparationRow } from './PreparationRow';
+import { useData } from '../contexts/DataContext';
 
 export const Preparation: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { patients, addPreparation } = useData(); // Use Real Data
   
   // Patient State
   const [patientName, setPatientName] = useState('');
@@ -24,6 +27,9 @@ export const Preparation: React.FC = () => {
   const [rows, setRows] = useState<{ id: number; data: any }[]>([]);
   const [nextId, setNextId] = useState(0);
 
+  // Saving State
+  const [isSaving, setIsSaving] = useState(false);
+
   // Initialize from Location State (Quick Action)
   useEffect(() => {
     if (location.state && location.state.patient) {
@@ -33,7 +39,6 @@ export const Preparation: React.FC = () => {
         setAge(p.age?.toString() || '');
         setWeight(p.weight?.toString() || '');
         
-        // Optionally try to autofill doctor from last history
         if (p.history && p.history.length > 0) {
             const lastLog = [...p.history].sort((a,b) => b.timestamp - a.timestamp)[0];
             if (lastLog.doctor) setDoctor(lastLog.doctor);
@@ -57,7 +62,7 @@ export const Preparation: React.FC = () => {
   const handlePatientNameChange = (val: string) => {
     setPatientName(val);
     if (val.trim().length > 1) {
-       const filtered = MOCK_PATIENTS.filter(p => p.name.includes(val.toUpperCase()));
+       const filtered = patients.filter(p => p.name.includes(val.toUpperCase()));
        setSuggestions(filtered);
        setShowSuggestions(true);
     } else {
@@ -93,7 +98,7 @@ export const Preparation: React.FC = () => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, data } : r));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!patientName.trim()) return alert("Nom du patient requis.");
     if (rows.length === 0) return alert("Aucune préparation à enregistrer.");
     
@@ -101,15 +106,22 @@ export const Preparation: React.FC = () => {
     const invalidRow = rows.find(r => !r.data || !r.data.valid);
     if (invalidRow) return alert("Veuillez compléter toutes les lignes de préparation (ou indiquer un motif).");
 
-    const payload = {
-      patient: { name: patientName, phone, age, weight, doctor },
-      team: selectedPreparators,
-      preparations: rows.map(r => r.data)
-    };
+    setIsSaving(true);
 
-    console.log("Saving Payload:", payload);
-    alert("Simulation: Enregistré avec succès !");
-    // Here we would call Firebase
+    try {
+      await addPreparation(
+        { name: patientName, phone, age, weight, doctor },
+        selectedPreparators,
+        rows.map(r => r.data)
+      );
+
+      navigate('/'); // Redirect to dashboard
+    } catch (error) {
+      alert("Erreur lors de l'enregistrement. Vérifiez votre connexion.");
+      console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -270,9 +282,11 @@ export const Preparation: React.FC = () => {
       <div className="flex justify-end pt-4 pb-12">
          <button 
            onClick={handleSave}
-           className="bg-emerald-600 text-white px-10 py-4 rounded-xl font-black uppercase text-sm shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-3"
+           disabled={isSaving}
+           className={`bg-emerald-600 text-white px-10 py-4 rounded-xl font-black uppercase text-sm shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-3 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
          >
-           <CheckCheck className="w-5 h-5" /> Valider & Enregistrer
+           {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCheck className="w-5 h-5" />}
+           {isSaving ? 'Enregistrement...' : 'Valider & Enregistrer'}
          </button>
       </div>
 
